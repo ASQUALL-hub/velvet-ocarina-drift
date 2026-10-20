@@ -1,0 +1,28 @@
+{
+  "bundle": {
+    "icon": [
+      "png/weekly_256.ico",
+      "png/weekly_32.ico"
+    ],
+    "active": true,
+    "resources": [
+      "png/weekly_32.ico",
+      "tools/yt-dlp.exe",
+      "tools/ffmpeg.exe",
+      "tools/deno.exe"
+    ],
+    "targets": [
+      "msi"
+    ],
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "wix": {
+        "language": [
+          "en-US"
+        ],
+        "template": "assets/main.wxs"
+      }
+    },
+    "createUpdaterArtifacts": true
+  }
+}

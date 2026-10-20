@@ -1,0 +1,10 @@
+# Build output and local logs
+out/
+build.log
+*.msi
+*.zip
+
+# Never commit binaries or signing keys
+*.exe
+*.key
+*.key.pub

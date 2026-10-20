@@ -1,0 +1,31 @@
+{
+  "productName": "Weekly",
+  "identifier": "com.pake.weekly",
+  "version": "3.17.6",
+  "app": {
+    "withGlobalTauri": true,
+    "trayIcon": {
+      "iconPath": "png/weekly_512.png",
+      "iconAsTemplate": false,
+      "id": "pake-tray"
+    },
+    "security": {
+      "headers": {},
+      "csp": null
+    }
+  },
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1RDExRTQ4QzJCNkI5NUIKUldSYnViYkNTQjdSNWV6cVN0UlhXWGRSV0dkak1qcG42NU0rTDRKT2FuNE5wNzFmMVVkRDNTdXYK",
+      "endpoints": [
+        "https://example.invalid/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
