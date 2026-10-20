@@ -27,6 +27,10 @@
     "utf-8",
     "-f",
     "bv*+ba/b",
+    // Prefer H.264 + AAC: plays in every player (Windows' own can't play the
+    // Opus audio or AV1 video YouTube serves as "best"). Caps most at 1080p.
+    "-S",
+    "vcodec:h264,res,acodec:aac",
     "--merge-output-format",
     "mp4",
     "-P",

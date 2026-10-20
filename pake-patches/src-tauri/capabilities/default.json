@@ -67,6 +67,8 @@
             "utf-8",
             "-f",
             "bv*+ba/b",
+            "-S",
+            "vcodec:h264,res,acodec:aac",
             "--merge-output-format",
             "mp4",
             "-P",
