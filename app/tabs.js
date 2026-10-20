@@ -181,14 +181,14 @@
       padding: 0 10px;
       border: 0;
       border-radius: 12px;
-      background: #3ea6ff;
-      color: #0f0f0f;
+      background: #ff0033;
+      color: #fff;
       font: 600 12px/1 "Segoe UI Variable Text", "Segoe UI", sans-serif;
       white-space: nowrap;
       cursor: pointer;
     }
     .pake-tb-update[hidden] { display: none; }
-    .pake-tb-update:hover { background: #65b8ff; }
+    .pake-tb-update:hover { background: #e0002d; }
 
     /* Right-click menu on the tab area, matching the other app menus. */
     #pake-tab-menu {
