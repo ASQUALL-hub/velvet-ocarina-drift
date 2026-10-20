@@ -858,10 +858,15 @@
   );
 
   // --- Updates ---
-  // On launch, ask the updater (GitHub Releases, signature-checked) whether a
-  // newer version exists; if so, show a small Update pill beside the window
-  // buttons. Nothing happens until it's clicked: then it downloads, Windows
-  // asks for admin, and the installer restarts the app on the new version.
+  // Ask the updater (GitHub Releases, signature-checked) whether a newer
+  // version exists: on launch, whenever an ad starts, whenever the app loses
+  // focus (not in mini mode) and whenever Home is opened. If so, show a small
+  // Update pill beside the window buttons. Nothing happens until it's
+  // clicked: then it downloads, Windows asks for admin, and the installer
+  // restarts the app on the new version.
+  const CHECK_GAP_MS = 30000; // triggers close together count as one check
+  let lastCheck = 0;
+  const checkLog = (window.__pakeUpdateChecks = []); // recent checks, for debugging
   const updateBtn = el("button", "pake-tb-update");
   updateBtn.hidden = true;
   controls.parentNode.insertBefore(updateBtn, controls);
@@ -874,7 +879,12 @@
     updateBtn.hidden = false;
   }
 
-  async function checkForUpdate() {
+  async function checkForUpdate(reason, force) {
+    if (pendingUpdate || updating) return; // the button is already showing
+    if (!force && Date.now() - lastCheck < CHECK_GAP_MS) return;
+    lastCheck = Date.now();
+    checkLog.push(`${new Date().toLocaleTimeString()} ${reason}`);
+    if (checkLog.length > 20) checkLog.shift();
     try {
       const update = await invokeTauri("plugin:updater|check", {});
       if (!update || !update.version) return;
@@ -910,14 +920,39 @@
       updating = false;
       showUpdate("Update failed", `${error}\nClick to try again.`);
       pendingUpdate = null;
-      checkForUpdate();
+      checkForUpdate("retry after a failed update", true);
     }
   });
 
   function invokeTauri(cmd, args) {
     return tauri.core.invoke(cmd, args);
   }
-  setTimeout(checkForUpdate, 4000);
+  setTimeout(() => checkForUpdate("launch", true), 4000);
+
+  // An ad starting: the player gets the "ad-showing" class.
+  let adShowing = false;
+  setInterval(() => {
+    const now = !!document.querySelector("#movie_player.ad-showing");
+    if (now && !adShowing) checkForUpdate("ad started");
+    adShowing = now;
+  }, 2000);
+
+  // The app losing focus. Focus moving into one of the page's own frames also
+  // blurs the window, so only count it when the document really lost focus.
+  window.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (document.hasFocus()) return;
+      if (document.documentElement.classList.contains("pake-mini")) return;
+      checkForUpdate("app lost focus");
+    }, 100);
+  });
+
+  // Home being opened (arriving there, not staying on it).
+  let lastPath = location.pathname;
+  document.addEventListener("yt-navigate-finish", () => {
+    if (location.pathname === "/" && lastPath !== "/") checkForUpdate("opened Home");
+    lastPath = location.pathname;
+  });
 
   // Show saved tabs straight away, then make the active one this page.
   loadTabs();
