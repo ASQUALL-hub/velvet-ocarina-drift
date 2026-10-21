@@ -1,8 +1,9 @@
 //! Local patch: miniplayer "peek" mode. While the miniplayer is open
 //! (armed), holding Caps Lock makes the window see-through and click-through
-//! so the app underneath can be used; releasing Caps Lock restores it.
-//! A low-level keyboard hook claims Caps Lock while armed, so the key never
-//! reaches other apps and never toggles the caps state.
+//! so the app underneath can be used; releasing Caps Lock restores it. A
+//! quick tap still toggles caps as usual. A low-level keyboard hook claims
+//! Caps Lock while armed and decides: held past HOLD_MS = peek (no toggle),
+//! released sooner = re-send the key so caps toggles normally.
 //!
 //! The hook runs on its own thread with its own message loop: Windows only
 //! calls a low-level hook while its thread is pumping messages, and silently
@@ -20,18 +21,23 @@ mod imp {
     use windows_sys::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::System::Threading::GetCurrentThreadId;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, GetWindowLongPtrW, PostThreadMessageW,
-        SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
-        GWLP_HINSTANCE, GWL_EXSTYLE, KBDLLHOOKSTRUCT, LWA_ALPHA, MSG, WH_KEYBOARD_LL, WM_APP,
-        WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WS_EX_LAYERED,
-        WS_EX_TRANSPARENT,
+        CallNextHookEx, GetMessageW, GetWindowLongPtrW, KillTimer, PostThreadMessageW,
+        SetLayeredWindowAttributes, SetTimer, SetWindowLongPtrW, SetWindowsHookExW,
+        UnhookWindowsHookEx, GWLP_HINSTANCE, GWL_EXSTYLE, KBDLLHOOKSTRUCT, LWA_ALPHA, MSG,
+        WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_TIMER, WS_EX_LAYERED, WS_EX_TRANSPARENT,
     };
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP};
 
     const VK_CAPITAL: u32 = 0x14;
     /// Opacity while peeking (0-255): about 30%.
     const PEEK_ALPHA: u8 = 77;
-    /// Posted from the hook to the hook thread; wParam 1 = start, 0 = stop.
-    const WM_PEEK: u32 = WM_APP + 1;
+    /// Posted from the hook to the hook thread; wParam 1 = key down, 0 = up.
+    const WM_CAPS: u32 = WM_APP + 1;
+    /// Holding Caps Lock longer than this peeks; shorter is a normal tap.
+    const HOLD_MS: u32 = 300;
+    /// Tags key events this module sends itself, so the hook lets them through.
+    const OWN_INPUT: usize = 0x5045_454B; // "PEEK"
 
     static WINDOW: AtomicIsize = AtomicIsize::new(0);
     static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
@@ -66,6 +72,9 @@ mod imp {
         if code >= 0 {
             let info = &*(lparam as *const KBDLLHOOKSTRUCT);
             if info.vkCode == VK_CAPITAL {
+                if info.dwExtraInfo == OWN_INPUT {
+                    return CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam);
+                }
                 CAPS_EVENTS.fetch_add(1, SeqCst);
                 let start = match wparam as u32 {
                     WM_KEYDOWN | WM_SYSKEYDOWN => Some(1),
@@ -73,9 +82,9 @@ mod imp {
                     _ => None,
                 };
                 if let Some(start) = start {
-                    PostThreadMessageW(HOOK_THREAD.load(SeqCst), WM_PEEK, start, 0);
+                    PostThreadMessageW(HOOK_THREAD.load(SeqCst), WM_CAPS, start, 0);
                 }
-                return 1; // claimed: never reaches other apps, never toggles caps
+                return 1; // claimed; a tap is re-sent once we know it was a tap
             }
         }
         CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
@@ -92,10 +101,9 @@ mod imp {
         }
         set_peek(on);
         if on {
-            use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP};
             unsafe {
-                keybd_event(VK_CAPITAL as u8, 0x3A, KEYEVENTF_KEYUP, 0);
-                keybd_event(VK_CAPITAL as u8, 0x3A, 0, 0);
+                keybd_event(VK_CAPITAL as u8, 0x3A, KEYEVENTF_KEYUP, OWN_INPUT);
+                keybd_event(VK_CAPITAL as u8, 0x3A, 0, OWN_INPUT);
             }
         }
     }
@@ -116,9 +124,42 @@ mod imp {
             HOOK_THREAD.store(GetCurrentThreadId(), SeqCst);
             let _ = ready_tx.send(Ok(()));
             let mut msg: MSG = std::mem::zeroed();
+            let mut held = false;
+            let mut timer = 0usize;
             while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-                if msg.message == WM_PEEK {
-                    set_peek(msg.wParam != 0);
+                match msg.message {
+                    // First key-down (auto-repeats ignored): start the hold timer.
+                    WM_CAPS if msg.wParam == 1 && !held => {
+                        held = true;
+                        timer = SetTimer(std::ptr::null_mut(), 0, HOLD_MS, None);
+                    }
+                    // Key-up: end a peek, or it was a tap and caps should toggle.
+                    WM_CAPS if msg.wParam == 0 => {
+                        let saw_down = held;
+                        held = false;
+                        if timer != 0 {
+                            KillTimer(std::ptr::null_mut(), timer);
+                            timer = 0;
+                        }
+                        if PEEKING.load(SeqCst) {
+                            set_peek(false);
+                        } else if saw_down {
+                            // (A key-up without its key-down here means the
+                            // press began while the miniplayer was in front;
+                            // the page handled it, so don't toggle again.)
+                            keybd_event(VK_CAPITAL as u8, 0x3A, 0, OWN_INPUT);
+                            keybd_event(VK_CAPITAL as u8, 0x3A, KEYEVENTF_KEYUP, OWN_INPUT);
+                        }
+                    }
+                    // Still held after HOLD_MS: peek.
+                    WM_TIMER if timer != 0 && msg.wParam == timer => {
+                        KillTimer(std::ptr::null_mut(), timer);
+                        timer = 0;
+                        if held {
+                            set_peek(true);
+                        }
+                    }
+                    _ => {}
                 }
             }
             UnhookWindowsHookEx(hook);

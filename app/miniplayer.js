@@ -663,6 +663,7 @@
     const hint = document.createElement("div");
     hint.className = "pake-mini-hint";
     hint.textContent = "Hold Caps Lock to see and click through";
+    hint.title = "A quick tap still turns caps lock on and off.";
     const items = [hint, lockItem];
     // download.js (yt-dlp) is optional; offer it when it's loaded.
     if (window.__PAKE_DOWNLOAD_CURRENT__) {
@@ -816,33 +817,59 @@
   }
 
   // When the miniplayer itself is in front, Windows doesn't run the native
-  // Caps Lock hook and the page gets the key instead, so start/stop the peek
-  // from here. Starting also makes the native side send a key-up + key-down
-  // to undo the caps toggle; skip those two echoes.
+  // Caps Lock hook and the page gets the key instead (Windows has already
+  // toggled caps, as for any tap). Held past PEEK_HOLD_MS it becomes a peek:
+  // the native side then undoes the toggle by sending key-up + key-down,
+  // whose two echoes are skipped here.
+  const PEEK_HOLD_MS = 300; // matches HOLD_MS in passthrough.rs
   let capsEchoes = 0;
+  let capsTimer = 0;
+  let capsPeeking = false;
+  function pagePeek(on) {
+    tauri.core
+      .invoke("mini_peek_from_page", { on })
+      .catch((error) => console.warn("[pake-miniplayer] peek", error));
+  }
   function onPageCaps(e) {
     if (!active || e.code !== "CapsLock") return;
-    e.preventDefault();
     if (capsEchoes > 0) {
       capsEchoes -= 1;
+      e.preventDefault();
       return;
     }
     if (e.type === "keydown") {
-      if (e.repeat) return;
-      capsEchoes = 2;
+      if (e.repeat || capsTimer) return;
+      capsPeeking = false; // a fresh press (a peek may have ended elsewhere)
+      capsTimer = setTimeout(() => {
+        capsTimer = 0;
+        capsPeeking = true;
+        capsEchoes = 2;
+        pagePeek(true);
+      }, PEEK_HOLD_MS);
+    } else if (capsTimer) {
+      clearTimeout(capsTimer); // a tap: caps toggled normally
+      capsTimer = 0;
+    } else if (capsPeeking) {
+      capsPeeking = false;
+      pagePeek(false);
     }
-    tauri.core
-      .invoke("mini_peek_from_page", { on: e.type === "keydown" })
-      .catch((error) => console.warn("[pake-miniplayer] peek", error));
   }
   window.addEventListener("keydown", onPageCaps, true);
   window.addEventListener("keyup", onPageCaps, true);
+  // Focus left mid-press: the native hook takes over from here.
+  window.addEventListener("blur", () => {
+    clearTimeout(capsTimer);
+    capsTimer = 0;
+  });
 
   async function exit() {
     clearTimeout(snapTimer);
     await fitting;
     setPeekArmed(false);
     capsEchoes = 0;
+    clearTimeout(capsTimer);
+    capsTimer = 0;
+    capsPeeking = false;
     document.documentElement.classList.remove("pake-mini");
     cancelDrag();
     closeMenu();
