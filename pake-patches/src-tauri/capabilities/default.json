@@ -119,6 +119,8 @@
         }
       ]
     },
-    "updater:default"
+    "updater:default",
+    "allow-set-mini-peek-armed",
+    "allow-mini-peek-from-page"
   ]
 }

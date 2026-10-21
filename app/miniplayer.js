@@ -179,6 +179,14 @@
       margin: 4px 2px;
       background: #464646;
     }
+    .pake-mini-hint {
+      padding: 6px 10px 8px;
+      color: #aaa;
+      font-size: 12px;
+      white-space: nowrap;
+      border-bottom: 1px solid #464646;
+      margin-bottom: 4px;
+    }
   `;
   const style = document.createElement("style");
   style.id = "pake-mini-style";
@@ -652,7 +660,10 @@
             console.error("[pake-miniplayer]", error),
           );
         });
-    const items = [lockItem];
+    const hint = document.createElement("div");
+    hint.className = "pake-mini-hint";
+    hint.textContent = "Hold Caps Lock to see and click through";
+    const items = [hint, lockItem];
     // download.js (yt-dlp) is optional; offer it when it's loaded.
     if (window.__PAKE_DOWNLOAD_CURRENT__) {
       items.push(menuItem("↓", "Download video", window.__PAKE_DOWNLOAD_CURRENT__));
@@ -787,11 +798,51 @@
     lastViewport = null;
     nudgeLayout();
     updateButton();
+    setPeekArmed(true);
   }
+
+  // Holding Caps Lock while the miniplayer is open makes it see-through and
+  // click-through (native code in the patched Pake: app::passthrough).
+  function setPeekArmed(armed) {
+    tauri.core
+      .invoke("set_mini_peek_armed", { armed })
+      .then((status) => {
+        window.__pakePeekStatus = status;
+      })
+      .catch((error) => {
+        window.__pakePeekStatus = `error: ${error}`;
+        console.warn("[pake-miniplayer] peek", error);
+      });
+  }
+
+  // When the miniplayer itself is in front, Windows doesn't run the native
+  // Caps Lock hook and the page gets the key instead, so start/stop the peek
+  // from here. Starting also makes the native side send a key-up + key-down
+  // to undo the caps toggle; skip those two echoes.
+  let capsEchoes = 0;
+  function onPageCaps(e) {
+    if (!active || e.code !== "CapsLock") return;
+    e.preventDefault();
+    if (capsEchoes > 0) {
+      capsEchoes -= 1;
+      return;
+    }
+    if (e.type === "keydown") {
+      if (e.repeat) return;
+      capsEchoes = 2;
+    }
+    tauri.core
+      .invoke("mini_peek_from_page", { on: e.type === "keydown" })
+      .catch((error) => console.warn("[pake-miniplayer] peek", error));
+  }
+  window.addEventListener("keydown", onPageCaps, true);
+  window.addEventListener("keyup", onPageCaps, true);
 
   async function exit() {
     clearTimeout(snapTimer);
     await fitting;
+    setPeekArmed(false);
+    capsEchoes = 0;
     document.documentElement.classList.remove("pake-mini");
     cancelDrag();
     closeMenu();
