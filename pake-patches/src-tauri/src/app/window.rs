@@ -453,6 +453,13 @@ fn build_window(
 
     let _data_dir =
         get_data_dir(app, data_dir_name(config, tauri_config)).map_err(tauri::Error::Io)?;
+    // Local patch: uBlock Origin Lite (see app::extensions).
+    let profile_dir = _data_dir.clone();
+    let extensions_root = if label == "pake" {
+        crate::app::extensions::prepare(app)
+    } else {
+        None
+    };
 
     let window_config = config.windows.first().ok_or_else(|| {
         tauri::Error::Io(std::io::Error::new(
@@ -759,6 +766,18 @@ fn build_window(
         #[cfg(target_os = "windows")]
         {
             window_builder = window_builder.additional_browser_args(&windows_browser_args);
+            // Local patch: all webviews sharing the profile must agree on this.
+            window_builder = window_builder.browser_extensions_enabled(true);
+            // Only register when needed (see app::extensions::prepare).
+            if let Some((root, true)) = &extensions_root {
+                window_builder = window_builder.extensions_path(root);
+            }
+            if label == "pake" {
+                crate::app::extensions::remember_profile(
+                    profile_dir.clone(),
+                    windows_browser_args.clone(),
+                );
+            }
         }
 
         #[cfg(target_os = "linux")]
@@ -888,6 +907,14 @@ fn build_window(
     });
 
     let window = window_builder.build()?;
+    #[cfg(target_os = "windows")]
+    if label == "pake" {
+        // Local patch: uBlock Origin Lite registration check and updates.
+        if let Some((_, registered_now)) = &extensions_root {
+            crate::app::extensions::after_main_window(app, &window, *registered_now);
+        }
+        crate::app::extensions::spawn_updater(app.clone());
+    }
 
     #[cfg(target_os = "windows")]
     {

@@ -121,6 +121,8 @@
     },
     "updater:default",
     "allow-set-mini-peek-armed",
-    "allow-mini-peek-from-page"
+    "allow-mini-peek-from-page",
+    "allow-open-ublock-panel",
+    "allow-ublock-status"
   ]
 }

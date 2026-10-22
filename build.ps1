@@ -6,6 +6,7 @@
 # Needs: pake-cli 3.17.6 (npm i -g pake-cli@3.17.6), Rust (stable-msvc), the
 # signing key in %USERPROFILE%\.yt-app-signing\updater.key (never commit it),
 # and yt-dlp.exe, ffmpeg.exe and deno.exe in -ToolsDir. -Publish needs gh.
+# The latest uBlock Origin Lite is downloaded from its GitHub on every build.
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [Parameter(Mandatory = $true)][string]$Repo,
@@ -47,6 +48,23 @@ New-Item -ItemType Directory -Force $toolsDest | Out-Null
 foreach ($tool in "yt-dlp.exe", "ffmpeg.exe", "deno.exe") {
     Copy-Item (Join-Path $ToolsDir $tool) $toolsDest -Force
 }
+
+Write-Host "Fetching the latest uBlock Origin Lite (Edge build)..."
+# Every release bundles the newest uBOL; installed apps also update it themselves.
+$ubolRelease = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/uBlockOrigin/uBOL-home/releases/latest"
+$ubolAsset = $ubolRelease.assets | Where-Object { $_.name -like "*.edge.zip" } | Select-Object -First 1
+if (-not $ubolAsset -or $ubolAsset.browser_download_url -notlike "https://github.com/uBlockOrigin/uBOL-home/releases/download/*") {
+    throw "No uBlock Origin Lite Edge build found in its latest release"
+}
+$ubolZip = Join-Path $env:TEMP "ubol-$($ubolRelease.tag_name).zip"
+Invoke-WebRequest -UseBasicParsing $ubolAsset.browser_download_url -OutFile $ubolZip
+$ubolDest = Join-Path $pake "src-tauri\extensions\ublock"
+Remove-Item (Join-Path $pake "src-tauri\extensions") -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive $ubolZip $ubolDest -Force
+Remove-Item $ubolZip
+$ubolVersion = (Get-Content (Join-Path $ubolDest "manifest.json") -Raw | ConvertFrom-Json).version
+if ($ubolVersion -ne $ubolRelease.tag_name) { throw "uBlock package version $ubolVersion doesn't match release $($ubolRelease.tag_name)" }
+Write-Host "  bundled uBlock Origin Lite $ubolVersion"
 
 Write-Host "Building $Version (this takes a few minutes)..."
 Remove-Item (Join-Path $pake "src-tauri\target\.pake-build.lock") -ErrorAction SilentlyContinue

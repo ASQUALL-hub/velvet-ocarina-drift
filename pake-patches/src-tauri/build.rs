@@ -16,6 +16,8 @@ fn main() {
             "set_title_bar_color",
             "set_mini_peek_armed", // local patch
             "mini_peek_from_page", // local patch
+            "open_ublock_panel", // local patch
+            "ublock_status", // local patch
         ]),
     ))
     .expect("Failed to build Pake permissions")

@@ -1210,10 +1210,10 @@ async function mergeIcons(options, name, tauriConf, platform, safeAppName) {
         }
         else {
             const iconPath = path.join(npmDirectory, 'src-tauri/', iconInfo.path);
-            // Local patch: keep bundled tools (yt-dlp/ffmpeg/deno) alongside the icon.
+            // Local patch: keep bundled tools (yt-dlp/ffmpeg/deno) and extensions alongside the icon.
             tauriConf.bundle.resources = [
                 iconInfo.path,
-                ...(tauriConf.bundle.resources || []).filter((r) => String(r).startsWith('tools/')),
+                ...(tauriConf.bundle.resources || []).filter((r) => ['tools/', 'extensions/'].some((p) => String(r).startsWith(p))),
             ];
             const absoluteDestPath = path.resolve(iconPath);
             if (resolvedIconPath !== absoluteDestPath) {

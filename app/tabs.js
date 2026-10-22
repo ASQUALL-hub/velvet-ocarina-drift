@@ -240,6 +240,16 @@
       font: 10px/1 "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
     }
     .pake-tb-controls button:hover { background: var(--tb-hover); }
+    .pake-tb-controls button:focus { outline: none; } /* no ring left after a click */
+    .pake-tb-controls button.pake-tb-ublock {
+      width: 28px;
+      height: 24px;
+      margin: 5px 6px 0 0;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .pake-tb-controls button.close:hover,
     .pake-tb-controls button.close.corner-hover { background: #c42b1c; color: #fff; }
   `;
@@ -291,7 +301,43 @@
   maxBtn.title = "Maximise";
   const closeBtn = el("button", "close", "");
   closeBtn.title = "Close";
-  controls.append(minBtn, maxBtn, closeBtn);
+  // uBlock Origin Lite: tiny square button (red/black "U") that opens its
+  // panel. Lives inside the controls group so it stays next to them.
+  const ublockBtn = el("button", "pake-tb-ublock");
+  // Same red shape and size as the YouTube logo on the left, black U inside.
+  const ublockIcon = document.createElementNS(SVG_NS, "svg");
+  ublockIcon.setAttribute("viewBox", "0 0 28 20");
+  ublockIcon.setAttribute("width", "20");
+  ublockIcon.setAttribute("height", "14");
+  const ublockBox = document.createElementNS(SVG_NS, "path");
+  ublockBox.setAttribute("fill", "#ff0033");
+  ublockBox.setAttribute("d", body.getAttribute("d"));
+  const ublockU = document.createElementNS(SVG_NS, "path");
+  for (const [k, v] of Object.entries({
+    d: "M10 4.5v6a4 4 0 0 0 8 0v-6",
+    fill: "none",
+    stroke: "#000",
+    "stroke-width": "3",
+    "stroke-linecap": "round",
+  })) {
+    ublockU.setAttribute(k, v);
+  }
+  ublockIcon.append(ublockBox, ublockU);
+  ublockBtn.appendChild(ublockIcon);
+  ublockBtn.title = "uBlock Origin Lite";
+  ublockBtn.addEventListener("mouseenter", () => {
+    tauri.core
+      .invoke("ublock_status")
+      .then((status) => (ublockBtn.title = status))
+      .catch(() => {});
+  });
+  ublockBtn.addEventListener("click", () => {
+    tauri.core.invoke("open_ublock_panel").catch((error) => {
+      ublockBtn.title = `uBlock Origin Lite: ${error}`;
+    });
+  });
+
+  controls.append(ublockBtn, minBtn, maxBtn, closeBtn);
 
   bar.append(logo, tabStrip, newTabBtn, drag, controls);
   document.body.appendChild(bar);

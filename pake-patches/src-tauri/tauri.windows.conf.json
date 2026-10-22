@@ -9,7 +9,8 @@
       "png/weekly_32.ico",
       "tools/yt-dlp.exe",
       "tools/ffmpeg.exe",
-      "tools/deno.exe"
+      "tools/deno.exe",
+      "extensions/**/*"
     ],
     "targets": [
       "msi"

@@ -417,6 +417,8 @@ pub fn run_app() {
             set_title_bar_color,
             app::passthrough::set_mini_peek_armed,
             app::passthrough::mini_peek_from_page,
+            app::extensions::open_ublock_panel,
+            app::extensions::ublock_status,
         ])
         .setup(move |app| {
             // Grant remote IPC only to the immutable, packaged entry origins,

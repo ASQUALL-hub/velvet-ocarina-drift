@@ -7,6 +7,7 @@ pub mod invoke;
 #[cfg(target_os = "macos")]
 pub mod menu;
 pub mod navigation;
+pub mod extensions; // local patch: uBlock Origin Lite
 pub mod notification;
 pub mod passthrough; // local patch: miniplayer Caps Lock peek
 pub mod setup;
