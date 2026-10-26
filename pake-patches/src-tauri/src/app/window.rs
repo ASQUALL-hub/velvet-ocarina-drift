@@ -658,7 +658,10 @@ fn build_window(
     );
 
     #[cfg(target_os = "windows")]
-    let mut windows_browser_args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-blink-features=AutomationControlled");
+    // Local patch: AudioServiceOutOfProcess off plays sound from the browser
+    // process instead of a separate audio utility process, so window-only
+    // screen shares (Discord) can find the app's audio.
+    let mut windows_browser_args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,AudioServiceOutOfProcess --disable-blink-features=AutomationControlled");
 
     #[cfg(target_os = "linux")]
     let mut linux_browser_args = String::from("--disable-blink-features=AutomationControlled");
