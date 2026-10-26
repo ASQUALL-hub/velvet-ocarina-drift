@@ -82,6 +82,34 @@
           "sidecar": false
         },
         {
+          "name": "pake-ytdlp-audio",
+          "cmd": "$RESOURCE/tools/yt-dlp.exe",
+          "args": [
+            "--ignore-config",
+            "--no-playlist",
+            "--newline",
+            "--encoding",
+            "utf-8",
+            "-f",
+            "bestaudio/best",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "320K",
+            "--embed-thumbnail",
+            "--embed-metadata",
+            "-P",
+            "~\\Downloads",
+            "-o",
+            "%(title)s [%(id)s].%(ext)s",
+            {
+              "validator": "https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]{11}"
+            }
+          ],
+          "sidecar": false
+        },
+        {
           "name": "pake-ytdlp-stop",
           "cmd": "C:\\Windows\\System32\\taskkill.exe",
           "args": [

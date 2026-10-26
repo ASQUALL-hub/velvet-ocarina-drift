@@ -39,8 +39,31 @@
     "-o",
     "%(title)s [%(id)s].%(ext)s",
   ];
+  // Audio only: YouTube's best audio stream, turned into a 320 kbps MP3 by
+  // FFmpeg (plays everywhere), with the thumbnail as cover art and the title.
+  const AUDIO_ARGS = [
+    "--ignore-config",
+    "--no-playlist",
+    "--newline",
+    "--encoding",
+    "utf-8",
+    "-f",
+    "bestaudio/best",
+    "-x",
+    "--audio-format",
+    "mp3",
+    "--audio-quality",
+    "320K",
+    "--embed-thumbnail",
+    "--embed-metadata",
+    "-P",
+    "~\\Downloads",
+    "-o",
+    "%(title)s [%(id)s].%(ext)s",
+  ];
   const MENU_ID = "pake-context-menu";
   const DOWNLOAD_TEXT = "Download Video";
+  const AUDIO_TEXT = "Download Audio";
   const DONE_LINGER_MS = 30000;
 
   const css = `
@@ -183,7 +206,7 @@
     dl.pill.classList.add("fade");
     setTimeout(() => {
       dl.pill.remove();
-      if (downloads.get(dl.id) === dl) downloads.delete(dl.id);
+      if (downloads.get(dl.key) === dl) downloads.delete(dl.key);
     }, 600);
   }
 
@@ -193,11 +216,12 @@
     if (dl.status === "done") label = "Saved";
     else if (dl.status === "failed") label = "Failed";
     else if (dl.status === "cancelled") label = "Cancelled";
-    else if (dl.merging) label = "Merging\u2026";
+    else if (dl.merging) label = dl.kind === "audio" ? "Converting\u2026" : "Merging\u2026";
     else label = `${pct.toFixed(0)}%`;
     dl.text.textContent = `${label} \u00B7 ${dl.title}`;
+    const runningIcon = dl.kind === "audio" ? "\uE8D6" : "\uE896";
     dl.icon.textContent =
-      dl.status === "done" ? "\uE73E" : dl.status === "running" ? "\uE896" : "\uE711";
+      dl.status === "done" ? "\uE73E" : dl.status === "running" ? runningIcon : "\uE711";
     dl.pill.className = `pake-dl ${dl.status}`;
     const tail =
       dl.status === "running"
@@ -244,14 +268,20 @@
     if (merged) dl.file = merged[1];
     const already = line.match(/^\[download\] (.+) has already been downloaded/);
     if (already) dl.file = already[1].trim();
-    if (/^\[Merger\]/.test(line)) dl.merging = true;
+    // Audio: the MP3 FFmpeg writes is the final file.
+    const extracted = line.match(/^\[ExtractAudio\] Destination: (.+)$/);
+    if (extracted) dl.file = extracted[1].trim();
+    const kept = line.match(/^\[ExtractAudio\] Not converting audio (.+?); file is already/);
+    if (kept) dl.file = kept[1].trim();
+    if (/^\[(Merger|ExtractAudio)\]/.test(line)) dl.merging = true;
     if (/has already been downloaded/.test(line)) dl.percent = 100;
     if (/^ERROR:/.test(line)) dl.error = line.slice(0, 300);
     update(dl);
   }
 
-  async function startDownload(id, title) {
-    const existing = downloads.get(id);
+  async function startDownload(id, title, kind = "video") {
+    const key = kind === "audio" ? `audio:${id}` : id;
+    const existing = downloads.get(key);
     if (existing && existing.status === "running") {
       existing.pill.animate([{ opacity: 0.3 }, { opacity: 1 }], { duration: 400 });
       return;
@@ -260,6 +290,8 @@
 
     const dl = {
       id,
+      key,
+      kind,
       title: title || id,
       status: "running",
       percent: 0,
@@ -270,7 +302,7 @@
       pid: null,
       file: "",
     };
-    downloads.set(id, dl);
+    downloads.set(key, dl);
     createPill(dl);
 
     const channel = new Channel();
@@ -285,8 +317,8 @@
     };
     try {
       dl.pid = await invoke("plugin:shell|spawn", {
-        program: "pake-ytdlp",
-        args: [...ARGS, `https://www.youtube.com/watch?v=${id}`],
+        program: kind === "audio" ? "pake-ytdlp-audio" : "pake-ytdlp",
+        args: [...(kind === "audio" ? AUDIO_ARGS : ARGS), `https://www.youtube.com/watch?v=${id}`],
         onEvent: channel,
         options: {},
       });
@@ -433,29 +465,40 @@
       } else {
         menuTarget = null;
       }
-      // Pake's link menu has no download entry: add one for video links.
-      if (linkId) setTimeout(addDownloadItem, 0);
+      // Pake's link menu has no download entry, and its video menu has no
+      // audio one: add what's missing once Pake has built the menu.
+      if (menuTarget) setTimeout(addDownloadItems, 0);
     },
     true,
   );
 
-  function addDownloadItem() {
-    const menu = document.getElementById(MENU_ID);
-    if (!menu || menu.style.display === "none" || !menuTarget) return;
-    const items = [...menu.children];
-    if (items.some((item) => item.textContent === DOWNLOAD_TEXT) || !items.length) return;
-    const template = items[0];
+  function menuItemLike(template, text) {
     const item = document.createElement("div");
     item.style.cssText = template.style.cssText;
-    item.textContent = DOWNLOAD_TEXT;
-    const hoverBg = getComputedStyle(template).backgroundColor;
+    item.style.backgroundColor = "transparent";
+    item.textContent = text;
     item.addEventListener("mouseenter", () => {
       item.style.backgroundColor = "rgba(127,127,127,.2)";
     });
     item.addEventListener("mouseleave", () => {
-      item.style.backgroundColor = hoverBg;
+      item.style.backgroundColor = "transparent";
     });
-    menu.insertBefore(item, template);
+    return item;
+  }
+
+  // "Download Video" first (Pake's own on the player, ours on video links),
+  // with "Download Audio" right under it.
+  function addDownloadItems() {
+    const menu = document.getElementById(MENU_ID);
+    if (!menu || menu.style.display === "none" || !menuTarget) return;
+    const items = [...menu.children];
+    if (!items.length || items.some((item) => item.textContent === AUDIO_TEXT)) return;
+    let video = items.find((item) => item.textContent === DOWNLOAD_TEXT);
+    if (!video) {
+      video = menuItemLike(items[0], DOWNLOAD_TEXT);
+      menu.insertBefore(video, items[0]);
+    }
+    video.after(menuItemLike(video, AUDIO_TEXT));
   }
 
   // Take over Pake's "Download Video" (which can't save YouTube's streams).
@@ -465,21 +508,21 @@
       const menu = document.getElementById(MENU_ID);
       if (!menu || !menu.contains(e.target)) return;
       const item = [...menu.children].find((child) => child.contains(e.target));
-      if (!item || item.textContent !== DOWNLOAD_TEXT) return;
+      if (!item || (item.textContent !== DOWNLOAD_TEXT && item.textContent !== AUDIO_TEXT)) return;
       const target = menuTarget || currentVideo();
       if (!target) return; // not a YouTube video: leave Pake's behaviour
       e.preventDefault();
       e.stopImmediatePropagation();
       menu.style.display = "none";
-      startDownload(target.id, target.title);
+      startDownload(target.id, target.title, item.textContent === AUDIO_TEXT ? "audio" : "video");
     },
     true,
   );
 
-  // Lets the miniplayer's own right-click menu offer a download too.
-  window.__PAKE_DOWNLOAD_CURRENT__ = () => {
+  // Lets the miniplayer's own right-click menu offer downloads too.
+  window.__PAKE_DOWNLOAD_CURRENT__ = (kind = "video") => {
     const video = currentVideo();
-    if (video) startDownload(video.id, video.title);
+    if (video) startDownload(video.id, video.title, kind);
   };
 
   // Keep the indicator in the title bar, or floating while in mini mode.

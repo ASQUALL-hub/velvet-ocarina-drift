@@ -667,7 +667,11 @@
     const items = [hint, lockItem];
     // download.js (yt-dlp) is optional; offer it when it's loaded.
     if (window.__PAKE_DOWNLOAD_CURRENT__) {
-      items.push(menuItem("↓", "Download video", window.__PAKE_DOWNLOAD_CURRENT__));
+      const download = window.__PAKE_DOWNLOAD_CURRENT__;
+      items.push(
+        menuItem("↓", "Download video", () => download("video")),
+        menuItem("♪", "Download audio", () => download("audio")),
+      );
     }
     menu.replaceChildren(
       ...items,
