@@ -275,7 +275,13 @@
     if (kept) dl.file = kept[1].trim();
     if (/^\[(Merger|ExtractAudio)\]/.test(line)) dl.merging = true;
     if (/has already been downloaded/.test(line)) dl.percent = 100;
-    if (/^ERROR:/.test(line)) dl.error = line.slice(0, 300);
+    if (/^ERROR:/.test(line)) {
+      // YouTube only shows some videos (age-restricted, flagged) to signed-in
+      // accounts, and the downloader isn't signed in.
+      dl.error = /Please sign in|Sign in to confirm/.test(line)
+        ? "YouTube only shows this video to signed-in accounts, so it can't be downloaded."
+        : line.slice(0, 300);
+    }
     update(dl);
   }
 
